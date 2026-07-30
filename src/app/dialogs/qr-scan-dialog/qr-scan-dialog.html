@@ -19,7 +19,6 @@
     <div class="absolute top-4 left-1/2 z-50 w-[90%] max-w-sm -translate-x-1/2">
       <select
         class="w-full rounded-lg border border-white/30 bg-black/60 px-3 py-2 text-sm text-white backdrop-blur focus:outline-none focus:ring-2 focus:ring-white/50"
-        [value]="selectedDeviceId()"
         (change)="onCameraChange($event)"
       >
         @for (device of devices(); track device.deviceId) {
