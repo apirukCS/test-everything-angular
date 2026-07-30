@@ -10,9 +10,9 @@
   <ngx-scanner-qrcode
     #scanner="scanner"
     class="scanner"
+    [config]="cameraConfig"
     [vibrate]="100"
     [isBeep]="true"
-    (error)="onScannerError($event)"
   />
 
   @if (devices().length > 1) {
