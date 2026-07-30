@@ -1,9 +1,10 @@
-import { Component, ViewChild, inject, signal, AfterViewInit } from '@angular/core';
+import { Component, ViewChild, inject, signal, AfterViewInit, OnDestroy } from '@angular/core';
 import { MatDialogRef } from '@angular/material/dialog';
 import { NgxScannerQrcodeComponent, ScannerQRCodeResult } from 'ngx-scanner-qrcode';
 import { CommonModule } from '@angular/common';
+import { Subscription } from 'rxjs';
 
-interface ScannerDeviceInfo {
+interface CameraDevice {
   label: string;
   deviceId: string;
   kind: string;
@@ -16,95 +17,114 @@ interface ScannerDeviceInfo {
   templateUrl: './qr-scan-dialog.html',
   styleUrl: './qr-scan-dialog.scss',
 })
-export class QrScanDialog implements AfterViewInit {
+export class QrScanDialog implements AfterViewInit, OnDestroy {
   public dialogRef = inject(MatDialogRef<QrScanDialog>);
 
   @ViewChild('scanner', { static: true })
   scanner!: NgxScannerQrcodeComponent;
 
+  devices = signal<CameraDevice[]>([]);
+  selectedDeviceId = signal('');
   scannerEnabled = signal(true);
-  isLoading = signal(false);
   result = signal('');
+  isLoading = signal(false);
 
-  // เก็บ devices สำหรับ dropdown
-  devices = signal<ScannerDeviceInfo[]>([]);
-  selectedDeviceId = signal<string>('');
+  private started = false;
+  private dataSub?: Subscription;
 
   ngAfterViewInit() {
-    // เริ่ม scanner
     this.scanner.start().subscribe({
-      next: () => console.log('scanner start'),
+      next: () => {
+        console.log('scanner started');
+        this.started = true;
+      },
       error: (err) => console.error('scanner start error', err),
     });
 
-    // subscribe รายการ devices
     this.scanner.devices.subscribe((deviceList: any[]) => {
-      const mapped = deviceList.map((d: any, i: number) => {
-        const info: ScannerDeviceInfo = {
-          label: d.label,
-          deviceId: d.deviceId,
-          kind: d.kind,
-          groupId: d.groupId,
-        };
-        console.log(i, info);
-        return info;
-      });
+      const mapped = deviceList.map((d: any) => ({
+        label: d.label,
+        deviceId: d.deviceId,
+        kind: d.kind,
+        groupId: d.groupId,
+      }));
 
       this.devices.set(mapped);
+      console.log('devices:', mapped);
 
-      // auto เลือกกล้องหลังครั้งแรก
       const backCamera = this.findBackCamera(mapped);
       if (backCamera) {
+        console.log('default back camera:', backCamera);
         this.selectedDeviceId.set(backCamera.deviceId);
-        this.playDevice(backCamera.deviceId);
+
+        queueMicrotask(() => {
+          this.playDevice(backCamera.deviceId);
+        });
       }
     });
 
-    // ผลการ scan
-    this.scanner.data.subscribe((results: ScannerQRCodeResult[]) => {
+    this.dataSub = this.scanner.data.subscribe((results: ScannerQRCodeResult[]) => {
       if (!this.scannerEnabled() || !results.length) return;
       this.onScanSuccess(results[0].value);
     });
   }
 
-  private findBackCamera(devices: ScannerDeviceInfo[]): ScannerDeviceInfo | null {
+  private findBackCamera(devices: CameraDevice[]): CameraDevice | null {
     if (!devices.length) return null;
-    const norm = (s: string) => (s || '').toLowerCase();
 
-    const backKeywords = ['กล้องด้านหลัง', 'กล้องหลัง', 'back', 'rear', 'environment'];
+    const normalized = (s: string) => (s || '').toLowerCase();
+
+    const backKeywords = [
+      'กล้องด้านหลัง',
+      'กล้องหลัง',
+      'กล้องคู่ด้านหลัง',
+      'กล้องด้านหลังมุมกว้าง',
+      'กล้องด้านหลังอัลตร้าไวด์',
+      'back',
+      'rear',
+      'environment',
+    ];
 
     const backDevices = devices.filter((d) => {
-      const label = norm(d.label);
+      const label = normalized(d.label);
       return backKeywords.some((k) => label.includes(k.toLowerCase()));
     });
 
-    if (!backDevices.length) {
-      return devices.at(-1) ?? null;
+    if (!backDevices.length) return devices.at(-1) ?? null;
+
+    const priority = [
+      /ultra.*wide|ultrawide|อัลตร้าไวด์/,
+      /wide|มุมกว้าง/,
+      /rear|back|environment/,
+    ];
+
+    for (const rule of priority) {
+      const found = backDevices.find((d) => rule.test(normalized(d.label)));
+      if (found) return found;
     }
 
-    const wide = backDevices.find((d) => {
-      const label = norm(d.label);
-      return !/tele|zoom|2x|3x|aux|macro|ระยะไกล|depth/.test(label);
-    });
-
-    return wide ?? backDevices[0];
+    return backDevices[0];
   }
 
-  private playDevice(deviceId: string) {
-    this.isLoading.set(true);
-    this.scanner.playDevice(deviceId).subscribe({
-      next: () => {
-        console.log('playDevice success', deviceId);
-        this.isLoading.set(false);
-      },
-      error: (err) => {
-        console.error('playDevice error', err);
-        this.isLoading.set(false);
-      },
-    });
+  playDevice(deviceId: string) {
+    // this.isLoading(true);
+    this.scanner.stop();
+
+    setTimeout(() => {
+      this.scanner.playDevice(deviceId).subscribe({
+        next: () => {
+          console.log('playDevice success:', deviceId);
+          // this.isLoading(false);
+        },
+        error: (err) => {
+          console.error('playDevice error:', err);
+          // this.isLoading(false);
+        },
+      });
+    }, 150);
   }
 
-  onCameraSelectChange(event: Event) {
+  onCameraChange(event: Event) {
     const deviceId = (event.target as HTMLSelectElement).value;
     this.selectedDeviceId.set(deviceId);
     this.playDevice(deviceId);
@@ -116,8 +136,17 @@ export class QrScanDialog implements AfterViewInit {
     this.dialogRef.close(data);
   }
 
+  onScannerError(error: any) {
+    
+  }
+
   close() {
+    this.dataSub?.unsubscribe();
     this.scanner.stop();
     this.dialogRef.close();
+  }
+
+  ngOnDestroy() {
+    this.close();
   }
 }

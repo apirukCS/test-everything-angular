@@ -1,27 +1,42 @@
 <div class="scanner-container relative">
+  @if (isLoading()) {
+    <div class="fixed inset-0 z-[99] flex items-center justify-center bg-black/30">
+      <div
+        class="h-10 w-10 animate-spin rounded-full border-4 border-white border-t-transparent"
+      ></div>
+    </div>
+  }
+
   <ngx-scanner-qrcode
     #scanner="scanner"
     class="scanner"
     [vibrate]="100"
     [isBeep]="true"
-  ></ngx-scanner-qrcode>
+    (error)="onScannerError($event)"
+  />
 
-  <!-- dropdown แสดงข้อมูลกล้องทั้งหมด -->
-  @if (devices().length) {
-    <div class="camera-selector">
-      <label for="camera-select">Camera:</label>
+  @if (devices().length > 1) {
+    <div class="absolute top-4 left-1/2 z-50 w-[90%] max-w-sm -translate-x-1/2">
       <select
-        id="camera-select"
+        class="w-full rounded-lg border border-white/30 bg-black/60 px-3 py-2 text-sm text-white backdrop-blur focus:outline-none focus:ring-2 focus:ring-white/50"
         [value]="selectedDeviceId()"
-        (change)="onCameraSelectChange($event)"
+        (change)="onCameraChange($event)"
       >
-        <option *ngFor="let d of devices()" [value]="d.deviceId">
-          <!-- เอา label / kind / groupId มารวมกัน -->
-          {{ d.label }} ({{ d.kind }}, group: {{ d.groupId | slice: 0 : 6 }})
-        </option>
+        @for (device of devices(); track device.deviceId) {
+          <option class="bg-gray-900 text-white" [value]="device.deviceId">
+            {{ device.label || 'Camera' }}
+          </option>
+        }
       </select>
     </div>
   }
 
-  <button class="cancel-btn" (click)="close()">COMMON.CANCEL</button>
+  <div class="scan-frame">
+    <div class="scan-border"></div>
+    <div class="scan-line"></div>
+  </div>
+
+  <button class="cancel-btn" (click)="close()">
+    {{ 'COMMON.CANCEL' }}
+  </button>
 </div>
