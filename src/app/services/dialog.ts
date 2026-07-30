@@ -29,12 +29,7 @@ async requestCameraPermission(): Promise<boolean> {
     const granted = await this.requestCameraPermission();
 
     if (!granted) {
-      //   await this.failed({
-      //     title: 'ALERT.PERMISSION_DENIED',
-      //     description: 'ALERT.PERMISSION_DENIED_DESC',
-      //   });
       alert('PERMISSION_DENIED');
-
       return undefined;
     }
 

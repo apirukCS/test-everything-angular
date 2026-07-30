@@ -2,12 +2,6 @@ import { Component, ViewChild, inject, signal } from '@angular/core';
 import { MatDialogRef } from '@angular/material/dialog';
 import { NgxScannerQrcodeComponent, ScannerQRCodeResult } from 'ngx-scanner-qrcode';
 
-// import { UtilsService } from '@services/utils/utils';
-// import { CardService } from '@services/card/card.service';
-// import { ScanCardPayload } from '@services/card/card-payload.model';
-// import { DialogService } from '@services/dialog/dialog.service';
-// import { ErrorMassageService } from '@services/error-message/error-massage.service';
-
 @Component({
   selector: 'app-qr-scan-dialog',
   imports: [NgxScannerQrcodeComponent],
@@ -15,11 +9,6 @@ import { NgxScannerQrcodeComponent, ScannerQRCodeResult } from 'ngx-scanner-qrco
   styleUrl: './qr-scan-dialog.scss',
 })
 export class QrScanDialog {
-  // private cardService = inject(CardService);
-  // private utilService = inject(UtilsService);
-  // private dialog = inject(DialogService);
-  // private errorMassageService = inject(ErrorMassageService);
-
   public dialogRef = inject(MatDialogRef<QrScanDialog>);
 
   @ViewChild('scanner', { static: true })
@@ -32,10 +21,18 @@ export class QrScanDialog {
   ngAfterViewInit() {
     this.scanner
       .start((devices: any[]) => {
-        const backCamera =
-          devices.find((d) => /back|rear|environment/i.test(d.label)) ?? devices.at(-1);
+        // แสดง log ดูว่า device มีอะไรบ้าง
+        console.log('📱 Available cameras:', devices);
+        devices.forEach((d: any, i: number) => {
+          console.log(`[${i}] ${d.label} (${d.deviceId})`);
+        });
+
+        // หา rear camera ที่ไม่ใช่ telephoto
+        const backCamera = this.selectBestBackCamera(devices);
 
         if (backCamera) {
+          console.log('✅ Selected camera:', backCamera.label);
+
           this.scanner.playDevice(backCamera.deviceId).subscribe({
             next: () => console.log('playDevice success'),
             error: (err) => console.error('playDevice error', err),
@@ -45,23 +42,59 @@ export class QrScanDialog {
       .subscribe({
         next: (res) => console.log('scanner start', res),
         error: (err) => console.error('scanner start error', err),
-        complete: () => console.log('scanner start complete'),
       });
+
     this.scanner.data.subscribe((results: ScannerQRCodeResult[]) => {
-      if (!this.scannerEnabled()) return;
-      if (!results.length) return;
+      if (!this.scannerEnabled() || !results.length) return;
 
       const data = results[0].value;
-
       this.onScanSuccess(data);
     });
   }
 
+  // ฟังก์ชันเลือกกล้องหลังที่ดีที่สุด
+  private selectBestBackCamera(devices: any[]): any {
+    if (!devices || devices.length === 0) return null;
+
+    // 1. หา rear/back camera ทั้งหมด
+    const backCameras = devices.filter((d: any) => /back|rear|environment/i.test(d.label));
+
+    if (backCameras.length === 0) {
+      // ถ้าไม่มี rear camera เลย ใช้ตัวสุดท้าย (มักเป็น rear)
+      return devices.at(-1);
+    }
+
+    // 2. เลือก camera ที่ไม่ใช่ telephoto/zoom
+    // iPhone: telephoto มักมีคำว่า "tele", "zoom", "2x"
+    // Android: telephoto มักมีคำว่า "tele", "zoom", "aux"
+    const wideCamera = backCameras.find((d: any) => {
+      const label = d.label.toLowerCase();
+      return !/tele|zoom|2x|3x|aux|macro|depth/.test(label);
+    });
+
+    if (wideCamera) {
+      return wideCamera;
+    }
+
+    // 3. ถ้าไม่มี wide camera จริงๆ ให้ใช้ rear camera ตัวแรก
+    return backCameras[0];
+  }
+
+  // กล้อง tele มักมี resolution สูงกว่า
   cameraConstraints: MediaStreamConstraints = {
     audio: false,
     video: {
       facingMode: {
         ideal: 'environment',
+      },
+      // จำกัด resolution ไม่ให้สูงเกินไป (เลี่ยง telephoto)
+      width: {
+        ideal: 1280, // Full HD
+        max: 1920, // ไม่เกิน 2K
+      },
+      height: {
+        ideal: 720,
+        max: 1080,
       },
     },
   };

@@ -12,8 +12,6 @@ import { DialogService } from './services/dialog';
 })
 export class App implements AfterViewInit {
   protected readonly title = signal('tmg-element-test');
-
-  private dialog = inject(MatDialog);
   private dialogService = inject(DialogService);
 
   ngAfterViewInit(): void {
