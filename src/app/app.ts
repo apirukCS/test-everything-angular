@@ -2,6 +2,7 @@ import { AfterViewInit, Component, inject, OnInit, signal } from '@angular/core'
 import { MatDialog } from '@angular/material/dialog';
 import { QrScanDialog } from './dialogs/qr-scan-dialog/qr-scan-dialog';
 import { LOAD_WASM } from 'ngx-scanner-qrcode';
+import { DialogService } from './services/dialog';
 
 @Component({
   selector: 'app-root',
@@ -13,24 +14,17 @@ export class App implements AfterViewInit {
   protected readonly title = signal('tmg-element-test');
 
   private dialog = inject(MatDialog);
+  private dialogService = inject(DialogService);
 
   ngAfterViewInit(): void {
-    // Load the decoder before the dialog opens; camera permission is requested by the scanner.
+    this.dialogService.requestCameraPermission();
     LOAD_WASM('assets/wasm/ngx-scanner-qrcode.wasm').subscribe({
-      error: (err) => console.error('Unable to load QR scanner decoder:', err),
+      error: (err) => alert(`Unable to load QR scanner decoder: ${err}`),
     });
   }
 
-  onClickScan() {
-    const dialogRef = this.dialog.open(QrScanDialog, {
-      width: '100vw',
-      height: '100vh',
-      maxWidth: '100vw',
-      maxHeight: '100vh',
-    });
-
-    dialogRef.afterClosed().subscribe((result: any) => {
-      alert(result);
-    });
+  async onClickScan() {
+    const result = await this.dialogService.openQrScanner();
+    alert(result);
   }
 }

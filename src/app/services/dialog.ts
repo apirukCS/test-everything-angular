@@ -7,7 +7,7 @@ import { firstValueFrom } from 'rxjs';
 export class DialogService {
   private dialog = inject(MatDialog);
 
-  private async requestCameraPermission(): Promise<boolean> {
+async requestCameraPermission(): Promise<boolean> {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
