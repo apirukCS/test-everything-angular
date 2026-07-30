@@ -1,6 +1,11 @@
-import { Component, inject, ViewChild, AfterViewInit, OnDestroy } from '@angular/core';
+import { Component, inject, ViewChild, AfterViewInit, OnDestroy, signal } from '@angular/core';
 import { MatDialogRef } from '@angular/material/dialog';
-import { NgxScannerQrcodeComponent, LOAD_WASM, ScannerQRCodeConfig } from 'ngx-scanner-qrcode';
+import {
+  NgxScannerQrcodeComponent,
+  LOAD_WASM,
+  ScannerQRCodeConfig,
+  ScannerQRCodeResult,
+} from 'ngx-scanner-qrcode';
 import { CommonModule } from '@angular/common';
 import { Subscription } from 'rxjs';
 
@@ -16,152 +21,84 @@ interface LogEntry {
   templateUrl: './qr-scan-dialog.html',
   styleUrl: './qr-scan-dialog.scss',
 })
-export class QrScanDialog implements AfterViewInit, OnDestroy {
+export class QrScanDialog {
   public dialogRef = inject(MatDialogRef<QrScanDialog>);
 
-  @ViewChild('scanner', { static: false })
+  @ViewChild('scanner', { static: true })
   scanner!: NgxScannerQrcodeComponent;
 
-  logs: LogEntry[] = [];
-  scannedData: any = null;
-  errorMessage: string = '';
-  private scannerSubscription?: Subscription;
-
-  // Config สำหรับกล้อง
-  scannerConfig: ScannerQRCodeConfig = {
-    constraints: {
-      video: {
-        facingMode: 'environment', // ใช้กล้องหลัง
-        width: { ideal: 1280 },
-        height: { ideal: 720 }
-      }
-    },
-    isBeep: true,
-    vibrate: 200,
-  };
+  scannerEnabled = signal(true);
+  result = signal('');
+  error = signal('');
+  devices = signal<any[]>([]);
 
   ngAfterViewInit() {
-    this.addLog('🔧 Component initialized', 'info');
-    this.initWasm();
-  }
+    this.scanner
+      .start((devices: any[]) => {
+        this.devices.set(devices);
+        const backCamera =
+          devices.find((d) => /back|rear|environment/i.test(d.label)) ?? devices.at(-1);
 
-  // โหลด WASM ก่อนใช้งาน
-  initWasm() {
-    this.addLog('⏳ Loading WASM...', 'info');
-    
-    try {
-      // โหลด WASM จาก CDN (หรือ local path)
-      LOAD_WASM().subscribe({
-        next: () => {
-          this.addLog('✅ WASM loaded successfully', 'success');
-        },
-        error: (err) => {
-          this.addLog(`❌ WASM error: ${err}`, 'error');
-          this.errorMessage = 'Failed to load scanner engine';
+        if (backCamera) {
+          this.scanner.playDevice(backCamera.deviceId).subscribe({
+            next: () => alert('playDevice success'),
+            error: (err) => alert('playDevice error'),
+          });
         }
+      })
+      .subscribe({
+        next: (res) => alert(`scanner start', ${res}`),
+        error: (err) => alert(`scanner error', ${err}`),
+        complete: () => alert('scanner start complete'),
       });
-    } catch (error: any) {
-      this.addLog(`❌ WASM init error: ${error.message}`, 'error');
-    }
+    this.scanner.data.subscribe((results: ScannerQRCodeResult[]) => {
+      if (!this.scannerEnabled()) return;
+      if (!results.length) return;
+
+      const data = results[0].value;
+
+      this.onScanSuccess(data);
+    });
   }
 
-  addLog(message: string, type: LogEntry['type'] = 'info') {
-    const time = new Date().toLocaleTimeString('th-TH');
-    this.logs.unshift({ time, message, type });
-    console.log(`[${type.toUpperCase()}] ${time}: ${message}`);
+  cameraConstraints: MediaStreamConstraints = {
+    audio: false,
+    video: {
+      facingMode: {
+        ideal: 'environment',
+      },
+    },
+  };
+
+  onScannerError(error: any) {
+    console.error('Scanner component error:', error);
+    this.handleScannerError(error);
   }
 
-  toggleScanner() {
-    if (this.scanner.isStart) {
-      this.stop();
-    } else {
-      this.start();
-    }
+  private handleScannerError(error: any) {
+    console.error('Scanner error:', error);
+
+    this.error.set(error);
   }
 
-  start() {
-    this.addLog('🚀 Starting scanner...', 'info');
-    this.errorMessage = '';
+  async onScanSuccess(data: string) {
+    if (!this.scannerEnabled()) return;
 
-    if (!this.scanner) {
-      this.addLog('❌ Scanner not initialized', 'error');
+    this.scannerEnabled.set(false);
+    this.scanner.stop();
+
+    const dataCleaned = data.replace(/\s/g, '');
+
+    if (dataCleaned.length === 16) {
+      this.dialogRef.close(dataCleaned);
       return;
     }
 
-    // ตรวจสอบ HTTPS
-    if (location.protocol === 'http:' && location.hostname !== 'localhost') {
-      this.addLog('⚠️ WARNING: Must use HTTPS on mobile!', 'warning');
-      this.errorMessage = 'HTTPS required for camera access on mobile';
-    }
-
-    // ตรวจสอบว่าพร้อมหรือยัง
-    if (!this.scanner.isReady) {
-      this.addLog('⏳ Waiting for scanner to be ready...', 'info');
-    }
-
-    // Stop ก่อนถ้ากำลังทำงาน
-    this.stop();
-
-    // Start และ Subscribe
-    try {
-      this.scannerSubscription = this.scanner.start().subscribe({
-        next: (result: any) => {
-          this.addLog(`📱 Scanner active`, 'info');
-          
-          if (result && Array.isArray(result) && result.length > 0) {
-            const qr = result[0];
-            this.scannedData = qr;
-            this.addLog(`✅ ${qr.typeName}: ${qr.value}`, 'success');
-            
-            // Vibrate บนมือถือ
-            if (navigator.vibrate) {
-              navigator.vibrate(200);
-            }
-          }
-        },
-        error: (error: any) => {
-          this.addLog(`❌ Error: ${error?.message || error}`, 'error');
-          this.errorMessage = error?.message || 'Camera access failed';
-          
-          // แก้ไขปัญหาพบบ่อย
-          if (error?.name === 'NotAllowedError') {
-            this.addLog('🚫 Camera permission denied by user', 'error');
-          } else if (error?.name === 'NotFoundError') {
-            this.addLog('📷 No camera found on device', 'error');
-          } else if (error?.name === 'NotReadableError') {
-            this.addLog('🔒 Camera is being used by another app', 'error');
-          } else if (error?.name === 'OverconstrainedError') {
-            this.addLog('⚙️ Camera constraints not supported', 'error');
-          }
-        },
-        complete: () => {
-          this.addLog('⏹️ Scanner completed', 'info');
-        }
-      });
-
-      this.addLog('✅ Scanner started', 'success');
-    } catch (error: any) {
-      this.addLog(`❌ Exception: ${error.message}`, 'error');
-      this.errorMessage = error.message;
-    }
+    this.result.set(data);
   }
 
-  stop() {
-    this.addLog('⏹️ Stopping scanner...', 'info');
-
-    if (this.scannerSubscription) {
-      this.scannerSubscription.unsubscribe();
-      this.scannerSubscription = undefined;
-      this.addLog('🔌 Subscription unsubscribed', 'info');
-    }
-
-    if (this.scanner && this.scanner.isStart) {
-      this.scanner.stop();
-      this.addLog('✅ Scanner stopped', 'info');
-    }
-  }
-
-  ngOnDestroy() {
-    this.stop();
+  close() {
+    this.scanner.stop();
+    this.dialogRef.close();
   }
 }
