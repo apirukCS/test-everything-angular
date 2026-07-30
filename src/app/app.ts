@@ -16,6 +16,25 @@ export class App implements OnInit {
 
   ngOnInit(): void {
     LOAD_WASM('assets/wasm/ngx-scanner-qrcode.wasm').subscribe();
+    this.requestCameraPermission();
+  }
+
+  private async requestCameraPermission(): Promise<boolean> {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: 'environment',
+        },
+        audio: false,
+      });
+
+      stream.getTracks().forEach((track) => track.stop());
+
+      return true;
+    } catch (err) {
+      console.error('Camera permission denied:', err);
+      return false;
+    }
   }
 
   onClickScan() {
