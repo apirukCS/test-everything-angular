@@ -1,19 +1,13 @@
-import { Component, inject, ViewChild, AfterViewInit, OnDestroy, signal } from '@angular/core';
+import { AfterViewInit, Component, inject, OnDestroy, signal, ViewChild } from '@angular/core';
 import { MatDialogRef } from '@angular/material/dialog';
 import {
   NgxScannerQrcodeComponent,
-  LOAD_WASM,
   ScannerQRCodeConfig,
+  ScannerQRCodeDevice,
   ScannerQRCodeResult,
 } from 'ngx-scanner-qrcode';
 import { CommonModule } from '@angular/common';
 import { Subscription } from 'rxjs';
-
-interface LogEntry {
-  time: string;
-  message: string;
-  type: 'info' | 'error' | 'success' | 'warning';
-}
 
 @Component({
   selector: 'app-qr-scan-dialog',
@@ -21,7 +15,7 @@ interface LogEntry {
   templateUrl: './qr-scan-dialog.html',
   styleUrl: './qr-scan-dialog.scss',
 })
-export class QrScanDialog {
+export class QrScanDialog implements AfterViewInit, OnDestroy {
   public dialogRef = inject(MatDialogRef<QrScanDialog>);
 
   @ViewChild('scanner', { static: true })
@@ -30,58 +24,60 @@ export class QrScanDialog {
   scannerEnabled = signal(true);
   result = signal('');
   error = signal('');
-  devices = signal<any[]>([]);
+  devices = signal<ScannerQRCodeDevice[]>([]);
 
-  ngAfterViewInit() {
-    this.scanner
-      .start((devices: any[]) => {
-        this.devices.set(devices);
-        const backCamera =
-          devices.find((d) => /back|rear|environment/i.test(d.label)) ?? devices.at(-1);
-
-        if (backCamera) {
-          this.scanner.playDevice(backCamera.deviceId).subscribe({
-            next: () => alert('playDevice success'),
-            error: (err) => alert('playDevice error'),
-          });
-        }
-      })
-      .subscribe({
-        next: (res) => alert(`scanner start', ${res}`),
-        error: (err) => alert(`scanner error', ${err}`),
-        complete: () => alert('scanner start complete'),
-      });
-    this.scanner.data.subscribe((results: ScannerQRCodeResult[]) => {
-      if (!this.scannerEnabled()) return;
-      if (!results.length) return;
-
-      const data = results[0].value;
-
-      this.onScanSuccess(data);
-    });
-  }
-
-  cameraConstraints: MediaStreamConstraints = {
-    audio: false,
-    video: {
-      facingMode: {
-        ideal: 'environment',
+  readonly cameraConfig: ScannerQRCodeConfig = {
+    constraints: {
+      audio: false,
+      video: {
+        facingMode: { ideal: 'environment' },
       },
     },
   };
 
-  onScannerError(error: any) {
-    console.error('Scanner component error:', error);
-    this.handleScannerError(error);
+  private readonly subscriptions = new Subscription();
+
+  ngAfterViewInit(): void {
+    this.subscriptions.add(
+      this.scanner
+      .start((devices: ScannerQRCodeDevice[]) => {
+        this.devices.set(devices);
+        const backCamera =
+          devices.find((device) => /back|rear|environment/i.test(device.label)) ?? devices[0];
+
+        if (backCamera) {
+          this.scanner.playDevice(backCamera.deviceId).subscribe({
+            error: (err) => this.handleScannerError(err),
+          });
+        }
+      })
+      .subscribe({
+        error: (err) => this.handleScannerError(err),
+      }),
+    );
+
+    this.subscriptions.add(
+      this.scanner.data.subscribe((results: ScannerQRCodeResult[]) => {
+        if (!this.scannerEnabled() || !results.length) return;
+
+        this.onScanSuccess(results[0].value);
+      }),
+    );
   }
 
-  private handleScannerError(error: any) {
+  ngOnDestroy(): void {
+    this.subscriptions.unsubscribe();
+    if (this.scanner?.isStart) {
+      this.scanner.stop();
+    }
+  }
+
+  private handleScannerError(error: unknown): void {
     console.error('Scanner error:', error);
-
-    this.error.set(error);
+    this.error.set(error instanceof Error ? error.message : String(error));
   }
 
-  async onScanSuccess(data: string) {
+  onScanSuccess(data: string): void {
     if (!this.scannerEnabled()) return;
 
     this.scannerEnabled.set(false);
@@ -97,8 +93,10 @@ export class QrScanDialog {
     this.result.set(data);
   }
 
-  close() {
-    this.scanner.stop();
+  close(): void {
+    if (this.scanner.isStart) {
+      this.scanner.stop();
+    }
     this.dialogRef.close();
   }
 }

@@ -15,26 +15,10 @@ export class App implements OnInit {
   private dialog = inject(MatDialog);
 
   ngOnInit(): void {
-    LOAD_WASM('assets/wasm/ngx-scanner-qrcode.wasm').subscribe();
-    this.requestCameraPermission();
-  }
-
-  private async requestCameraPermission(): Promise<boolean> {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'environment',
-        },
-        audio: false,
-      });
-
-      stream.getTracks().forEach((track) => track.stop());
-
-      return true;
-    } catch (err) {
-      console.error('Camera permission denied:', err);
-      return false;
-    }
+    // Load the decoder before the dialog opens; camera permission is requested by the scanner.
+    LOAD_WASM('assets/wasm/ngx-scanner-qrcode.wasm').subscribe({
+      error: (err) => console.error('Unable to load QR scanner decoder:', err),
+    });
   }
 
   onClickScan() {

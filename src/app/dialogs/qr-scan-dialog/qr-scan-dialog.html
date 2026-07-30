@@ -1,5 +1,5 @@
 <div class="scanner-container">
-  <ngx-scanner-qrcode #scanner="scanner"> </ngx-scanner-qrcode>
+  <ngx-scanner-qrcode #scanner="scanner" [config]="cameraConfig"> </ngx-scanner-qrcode>
 
   <div>result: {{ result() }}</div>
   <div>error: {{ error() }}</div>
