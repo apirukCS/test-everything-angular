@@ -119,7 +119,7 @@ export class QrScanDialog {
   async onScanSuccess(data: string) {
     if (!this.scannerEnabled()) return;
 
-    this.result.set(data);
+    this.dialogRef.close(data);
   }
 
   close() {

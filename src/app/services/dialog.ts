@@ -33,7 +33,7 @@ async requestCameraPermission(): Promise<boolean> {
       return undefined;
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 300));
 
     const dialogRef = this.dialog.open(QrScanDialog, {
       width: '100vw',

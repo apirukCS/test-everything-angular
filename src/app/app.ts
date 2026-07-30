@@ -15,7 +15,7 @@ export class App implements AfterViewInit {
   private dialogService = inject(DialogService);
 
   ngAfterViewInit(): void {
-    this.dialogService.requestCameraPermission();
+    // this.dialogService.requestCameraPermission();
     LOAD_WASM('assets/wasm/ngx-scanner-qrcode.wasm').subscribe({
       error: (err) => alert(`Unable to load QR scanner decoder: ${err}`),
     });
