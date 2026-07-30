@@ -35,16 +35,17 @@ export class QrScanDialog implements AfterViewInit, OnDestroy {
   isLoading = signal(false);
 
   private dataSub?: Subscription;
+  private playbackCheck?: ReturnType<typeof setTimeout>;
+  private restartTimer?: ReturnType<typeof setTimeout>;
+  private restartAttempts = 0;
+  private isClosing = false;
 
   ngAfterViewInit(): void {
     this.isLoading.set(true);
-    this.scanner.start((initialDevices: ScannerQRCodeDevice[]) => {
-      // Labels are often blank before permission. Refresh the list afterwards,
-      // then choose the rear camera before the library starts a video stream.
-      void this.selectInitialCamera(initialDevices);
-    }).subscribe({
-      error: (err) => this.onScannerError(err),
-    });
+    // Permission has already been requested from the Scan button. Calling start()
+    // here would open and immediately close a second temporary stream before
+    // playDevice() opens the real one, which fails on some mobile devices.
+    void this.selectInitialCamera();
 
     this.dataSub = this.scanner.data.subscribe((results: ScannerQRCodeResult[]) => {
       if (!this.scannerEnabled() || !results.length) return;
@@ -52,18 +53,16 @@ export class QrScanDialog implements AfterViewInit, OnDestroy {
     });
   }
 
-  private async selectInitialCamera(initialDevices: ScannerQRCodeDevice[]): Promise<void> {
+  private async selectInitialCamera(): Promise<void> {
     try {
-      const devices: ScannerQRCodeDevice[] = (await navigator.mediaDevices.enumerateDevices())
-        .filter((device) => device.kind === 'videoinput')
-        .map(({ deviceId, groupId, kind, label }) => ({ deviceId, groupId, kind, label }));
+      const devices = await this.getCameraDevices();
 
       // ngx-scanner-qrcode uses this list inside playDevice(), so keep both lists
       // in sync with the post-permission values.
       this.scanner.devices.next(devices);
       this.devices.set(devices);
 
-      const selected = this.findBackCamera(devices) ?? initialDevices[0];
+      const selected = this.findBackCamera(devices);
       if (!selected) throw new Error('No camera detected.');
 
       this.selectedDeviceId.set(selected.deviceId);
@@ -71,6 +70,21 @@ export class QrScanDialog implements AfterViewInit, OnDestroy {
     } catch (err) {
       this.onScannerError(err);
     }
+  }
+
+  private async getCameraDevices(): Promise<ScannerQRCodeDevice[]> {
+    // A few devices return an empty list briefly after their permission prompt
+    // closes. Retry enumeration before reporting that no camera exists.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const devices: ScannerQRCodeDevice[] = (await navigator.mediaDevices.enumerateDevices())
+        .filter((device) => device.kind === 'videoinput')
+        .map(({ deviceId, groupId, kind, label }) => ({ deviceId, groupId, kind, label }));
+
+      if (devices.length) return devices;
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+
+    return [];
   }
 
   private findBackCamera(devices: ScannerQRCodeDevice[]): ScannerQRCodeDevice | null {
@@ -90,14 +104,67 @@ export class QrScanDialog implements AfterViewInit, OnDestroy {
     );
   }
 
-  private playDevice(deviceId: string): void {
+  private playDevice(deviceId: string, retry = 0): void {
     this.isLoading.set(true);
     // playDevice() stops the current stream itself. Calling stop() followed by a
     // timeout races the library and can make a reopened dialog select the front camera.
     this.scanner.playDevice(deviceId).subscribe({
-      next: () => this.isLoading.set(false),
-      error: (err) => this.onScannerError(err),
+      next: () => {
+        this.isLoading.set(false);
+        this.checkCameraPlayback();
+      },
+      error: (err: DOMException) => {
+        // The permission probe has just stopped its track. Some Android WebViews
+        // need a moment before the camera can be acquired again.
+        if (retry === 0 && err?.name === 'NotReadableError') {
+          setTimeout(() => this.playDevice(deviceId, 1), 300);
+          return;
+        }
+        this.restartScanner(err);
+      },
     });
+  }
+
+  private checkCameraPlayback(): void {
+    clearTimeout(this.playbackCheck);
+    this.playbackCheck = setTimeout(() => {
+      const video = this.scanner.video?.nativeElement;
+      const track = (video?.srcObject as MediaStream | null)?.getVideoTracks()[0];
+      const hasFrame = (video?.readyState ?? 0) >= HTMLMediaElement.HAVE_CURRENT_DATA;
+
+      if (track?.readyState === 'live' && hasFrame) {
+        this.restartAttempts = 0;
+        return;
+      }
+
+      this.restartScanner(new Error('Camera stream did not become active.'));
+    }, 1_000);
+  }
+
+  private restartScanner(error: unknown): void {
+    if (!this.canRetryCamera(error) || this.restartAttempts >= 1) {
+      this.onScannerError(error);
+      return;
+    }
+
+    this.restartAttempts++;
+    this.isLoading.set(true);
+    clearTimeout(this.playbackCheck);
+    this.stopScanner();
+
+    // Let the browser release the previous camera handle before start() creates
+    // the library's permission stream again.
+    this.restartTimer = setTimeout(() => {
+      if (this.isClosing) return;
+      this.scanner.start(() => void this.selectInitialCamera()).subscribe({
+        error: (startError) => this.onScannerError(startError),
+      });
+    }, 300);
+  }
+
+  private canRetryCamera(error: unknown): boolean {
+    if (!(error instanceof DOMException)) return true;
+    return error.name !== 'NotAllowedError' && error.name !== 'SecurityError';
   }
 
   onCameraChange(event: Event): void {
@@ -111,6 +178,7 @@ export class QrScanDialog implements AfterViewInit, OnDestroy {
 
     this.scannerEnabled.set(false);
     this.result.set(data);
+    this.cancelPendingCameraWork();
     this.stopScanner();
     this.dialogRef.close(data);
   }
@@ -121,13 +189,21 @@ export class QrScanDialog implements AfterViewInit, OnDestroy {
   }
 
   close(): void {
+    this.cancelPendingCameraWork();
     this.stopScanner();
     this.dialogRef.close();
   }
 
   ngOnDestroy(): void {
     this.dataSub?.unsubscribe();
+    this.cancelPendingCameraWork();
     this.stopScanner();
+  }
+
+  private cancelPendingCameraWork(): void {
+    this.isClosing = true;
+    clearTimeout(this.playbackCheck);
+    clearTimeout(this.restartTimer);
   }
 
   private stopScanner(): void {
