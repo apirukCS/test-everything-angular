@@ -1,7 +1,27 @@
-<div class="scanner-container">
-  <ngx-scanner-qrcode #scanner="scanner" [config]="cameraConfig"> </ngx-scanner-qrcode>
+<div class="scanner-container relative">
+  @if (isLoading()) {
+    <div class="fixed inset-0 z-[99] flex items-center justify-center bg-black/30">
+      <div
+        class="h-10 w-10 rounded-full border-4 border-white border-t-transparent animate-spin"
+      ></div>
+    </div>
+  }
 
-  <div>result: {{ result() }}</div>
-  <div>error: {{ error() }}</div>
-  <div>devices: {{ devices() | json }}</div>
+  <ngx-scanner-qrcode
+    #scanner="scanner"
+    class="scanner"
+    [vibrate]="100"
+    [isBeep]="true"
+    (error)="onScannerError($event)"
+  />
+
+  <div class="scan-frame">
+    <div class="scan-border"></div>
+    <div class="scan-line"></div>
+  </div>
+  <div class="bg-white">result: {{ result() }}</div>
+
+  <button class="cancel-btn" (click)="close()">
+    {{ 'COMMON.CANCEL' }}
+  </button>
 </div>

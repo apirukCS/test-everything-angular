@@ -1,102 +1,96 @@
-import { AfterViewInit, Component, inject, OnDestroy, signal, ViewChild } from '@angular/core';
+import { Component, ViewChild, inject, signal } from '@angular/core';
 import { MatDialogRef } from '@angular/material/dialog';
-import {
-  NgxScannerQrcodeComponent,
-  ScannerQRCodeConfig,
-  ScannerQRCodeDevice,
-  ScannerQRCodeResult,
-} from 'ngx-scanner-qrcode';
-import { CommonModule } from '@angular/common';
-import { Subscription } from 'rxjs';
+import { NgxScannerQrcodeComponent, ScannerQRCodeResult } from 'ngx-scanner-qrcode';
+
+// import { UtilsService } from '@services/utils/utils';
+// import { CardService } from '@services/card/card.service';
+// import { ScanCardPayload } from '@services/card/card-payload.model';
+// import { DialogService } from '@services/dialog/dialog.service';
+// import { ErrorMassageService } from '@services/error-message/error-massage.service';
 
 @Component({
   selector: 'app-qr-scan-dialog',
-  imports: [NgxScannerQrcodeComponent, CommonModule],
+  imports: [NgxScannerQrcodeComponent],
   templateUrl: './qr-scan-dialog.html',
   styleUrl: './qr-scan-dialog.scss',
 })
-export class QrScanDialog implements AfterViewInit, OnDestroy {
+export class QrScanDialog {
+  // private cardService = inject(CardService);
+  // private utilService = inject(UtilsService);
+  // private dialog = inject(DialogService);
+  // private errorMassageService = inject(ErrorMassageService);
+
   public dialogRef = inject(MatDialogRef<QrScanDialog>);
 
   @ViewChild('scanner', { static: true })
   scanner!: NgxScannerQrcodeComponent;
 
   scannerEnabled = signal(true);
+  isLoading = signal(false);
   result = signal('');
-  error = signal('');
-  devices = signal<ScannerQRCodeDevice[]>([]);
 
-  readonly cameraConfig: ScannerQRCodeConfig = {
-    constraints: {
-      audio: false,
-      video: {
-        facingMode: { ideal: 'environment' },
-      },
-    },
-  };
-
-  private readonly subscriptions = new Subscription();
-
-  ngAfterViewInit(): void {
-    this.subscriptions.add(
-      this.scanner
-      .start((devices: ScannerQRCodeDevice[]) => {
-        this.devices.set(devices);
+  ngAfterViewInit() {
+    this.scanner
+      .start((devices: any[]) => {
         const backCamera =
-          devices.find((device) => /back|rear|environment/i.test(device.label)) ?? devices[0];
+          devices.find((d) => /back|rear|environment/i.test(d.label)) ?? devices.at(-1);
 
         if (backCamera) {
           this.scanner.playDevice(backCamera.deviceId).subscribe({
-            error: (err) => this.handleScannerError(err),
+            next: () => console.log('playDevice success'),
+            error: (err) => console.error('playDevice error', err),
           });
         }
       })
       .subscribe({
-        error: (err) => this.handleScannerError(err),
-      }),
-    );
+        next: (res) => console.log('scanner start', res),
+        error: (err) => console.error('scanner start error', err),
+        complete: () => console.log('scanner start complete'),
+      });
+    this.scanner.data.subscribe((results: ScannerQRCodeResult[]) => {
+      if (!this.scannerEnabled()) return;
+      if (!results.length) return;
 
-    this.subscriptions.add(
-      this.scanner.data.subscribe((results: ScannerQRCodeResult[]) => {
-        if (!this.scannerEnabled() || !results.length) return;
+      const data = results[0].value;
 
-        this.onScanSuccess(results[0].value);
-      }),
-    );
+      this.onScanSuccess(data);
+    });
   }
 
-  ngOnDestroy(): void {
-    this.subscriptions.unsubscribe();
-    if (this.scanner?.isStart) {
-      this.scanner.stop();
-    }
+  cameraConstraints: MediaStreamConstraints = {
+    audio: false,
+    video: {
+      facingMode: {
+        ideal: 'environment',
+      },
+    },
+  };
+
+  onScannerError(error: any) {
+    console.error('Scanner component error:', error);
+    this.handleScannerError(error);
   }
 
-  private handleScannerError(error: unknown): void {
+  private handleScannerError(error: any) {
     console.error('Scanner error:', error);
-    this.error.set(error instanceof Error ? error.message : String(error));
+
+    if (error?.name === 'NotAllowedError' || error?.name === 'PermissionDeniedError') {
+      alert('ไม่ได้รับอนุญาตใช้งานกล้อง');
+    } else if (error?.name === 'NotFoundError' || error?.name === 'DevicesNotFoundError') {
+      alert('ไม่พบกล้อง');
+    } else {
+      alert('เกิดข้อผิดพลาด');
+    }
   }
 
-  onScanSuccess(data: string): void {
+  async onScanSuccess(data: string) {
     if (!this.scannerEnabled()) return;
-
-    this.scannerEnabled.set(false);
-    this.scanner.stop();
-
-    const dataCleaned = data.replace(/\s/g, '');
-
-    if (dataCleaned.length === 16) {
-      this.dialogRef.close(dataCleaned);
-      return;
-    }
 
     this.result.set(data);
   }
 
-  close(): void {
-    if (this.scanner.isStart) {
-      this.scanner.stop();
-    }
+  close() {
+    this.scanner.stop();
     this.dialogRef.close();
   }
 }
