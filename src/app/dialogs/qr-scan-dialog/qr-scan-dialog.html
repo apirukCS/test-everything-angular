@@ -21,6 +21,7 @@
         class="w-full rounded-lg border border-white/30 bg-black/60 px-3 py-2 text-sm text-white backdrop-blur focus:outline-none focus:ring-2 focus:ring-white/50"
         (change)="onCameraChange($event)"
       >
+        <option value="" selected disabled>เลือกกล้อง</option>
         @for (device of devices(); track device.deviceId) {
           <option class="bg-gray-900 text-white" [value]="device.deviceId">
             {{ device.label || 'Camera' }}
