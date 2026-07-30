@@ -1,59 +1,23 @@
-<!-- <div class="scanner-container relative">
-  @if (isLoading()) {
-    <div class="fixed inset-0 z-[99] flex items-center justify-center bg-black/30">
-      <div
-        class="h-10 w-10 rounded-full border-4 border-white border-t-transparent animate-spin"
-      ></div>
+<!-- qr-scan-dialog.html -->
+<div class="scanner-container">
+  <ngx-scanner-qrcode #scanner="scanner" (error)="onScanError($event)" (data)="onScanData($event)">
+  </ngx-scanner-qrcode>
+
+  <button (click)="start()">Start</button>
+  <button (click)="stop()">Stop</button>
+
+  <!-- Log Section -->
+  <div class="log-container">
+    <h3>📋 Event Log</h3>
+    <div *ngFor="let log of logs" class="log-item" [ngClass]="log.type">
+      <small>{{ log.time }}</small>
+      <p>{{ log.message }}</p>
     </div>
-  } -->
-
-<!-- <section>
-  <h2>Scan Barcode</h2>
-  <button (click)="startScanner()">Scan Code</button>
-  <barcode-scanner-livestream
-    #scanner
-    [type]="['code_128', 'code_39', 'ean_8']"
-    (valueChanges)="onValueChanges($event)"
-  >
-  </barcode-scanner-livestream>
-  <ng-container *ngIf="barcode">
-    <div>Serial Number: {{ barcode }}</div>
-    <div>{{ result | json }}</div>
-  </ng-container>
-</section> -->
-
-<!-- 
-  <zxing-scanner
-    [formats]="allowedFormats"
-    class="scanner"
-    [enable]="scannerEnabled()"
-    (scanError)="onScanError($event)"
-    (scanSuccess)="onScanSuccess($event)"
-    (camerasFound)="onCamerasFound($event)"
-    (permissionResponse)="onPermissionResponse($event)"
-  /> -->
-
-<!-- <div class="scan-frame">
-    <div class="scan-border"></div>
-    <div class="scan-line"></div>
   </div>
 
-  <button class="cancel-btn" (click)="close()">{{ 'COMMON.CANCEL' }} {{ scannedResult() }}</button>
-</div> -->
-
-<!-- <video #video width="300" height="200"></video>
-<button (click)="start()">Start</button>
-<button (click)="stop()">Stop</button>
-<pre>{{ result() ? result() : '-' }}</pre>
-
-<button class="cancel-btn" (click)="close()">{{ 'COMMON.CANCEL' }}</button> -->
-
-<ngx-scanner-qrcode #scanner="scanner"></ngx-scanner-qrcode>
-
-<button (click)="start()">Start</button>
-
-<button (click)="stop()">Stop</button>
-
-<div>
-  {{ scanner.data | async | json }}
+  <!-- Data Display -->
+  <div class="data-display">
+    <h3>📦 Scanned Data</h3>
+    <pre>{{ scannerData | json }}</pre>
+  </div>
 </div>
