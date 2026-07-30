@@ -24,7 +24,7 @@ export class QrScanDialog implements AfterViewInit, OnDestroy {
   readonly cameraConfig: ScannerQRCodeConfig = {
     constraints: {
       audio: false,
-      video: true,
+      video: { facingMode: { ideal: 'environment' } },
     },
   };
 
@@ -95,21 +95,9 @@ export class QrScanDialog implements AfterViewInit, OnDestroy {
     // playDevice() stops the current stream itself. Calling stop() followed by a
     // timeout races the library and can make a reopened dialog select the front camera.
     this.scanner.playDevice(deviceId).subscribe({
-      next: () => {
-        this.syncSelectedDeviceWithStream();
-        this.isLoading.set(false);
-      },
+      next: () => this.isLoading.set(false),
       error: (err) => this.onScannerError(err),
     });
-  }
-
-  private syncSelectedDeviceWithStream(): void {
-    const stream = this.scanner.video.nativeElement.srcObject as MediaStream | null;
-    const activeDeviceId = stream?.getVideoTracks()[0]?.getSettings().deviceId;
-
-    if (activeDeviceId && this.devices().some((device) => device.deviceId === activeDeviceId)) {
-      this.selectedDeviceId.set(activeDeviceId);
-    }
   }
 
   onCameraChange(event: Event): void {
