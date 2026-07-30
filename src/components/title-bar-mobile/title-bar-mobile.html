@@ -1,0 +1,17 @@
+<div [class]="'flex justify-between lg:hidden ' + padding">
+  <ng-container *ngTemplateOutlet="backButton" />
+  <div class="text-xl">
+    {{ title }}
+  </div>
+  <div class="opacity-0 pointer-events-none">
+    <ng-container *ngTemplateOutlet="backButton" />
+  </div>
+</div>
+
+<ng-template #backButton>
+  @if (useMobileIconBack) {
+    <div>Back</div>
+  }@else {
+    <div></div>
+  }
+</ng-template>

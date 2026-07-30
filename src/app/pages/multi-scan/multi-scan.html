@@ -1,0 +1,26 @@
+<div class="controls">
+  <button (click)="openScanQr()">Scan QR</button>
+  <button (click)="openScanCode128()">Scan Code128</button>
+  <button (click)="openScanBoth()">Scan Both</button>
+  <button (click)="openScanFromImage()">Scan From Image</button>
+  <button (click)="stopScanner()">Stop</button>
+</div>
+
+<zxing-scanner
+  [enable]="scannerEnabled"
+  [formats]="allowedFormats"
+  [(device)]="selectedDevice"
+  (camerasFound)="onCamerasFound($event)"
+  (permissionResponse)="onPermissionResponse($event)"
+  (scanSuccess)="onScanSuccess($event)"
+  (scanError)="onScanError($event)"
+  (scanFailure)="onScanFailure($event)"
+  style="width: 100%; height: auto"
+></zxing-scanner>
+
+@if (lastResult) {
+  <div>
+    <h4>Last result</h4>
+    <pre>{{ lastResult }}</pre>
+  </div>
+}
