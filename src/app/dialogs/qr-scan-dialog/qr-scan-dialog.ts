@@ -1,10 +1,8 @@
-// qr-scan-dialog.ts
-import { Component, inject, signal, ViewChild, AfterViewInit } from '@angular/core';
+import { Component, inject, ViewChild, AfterViewInit, OnDestroy } from '@angular/core';
 import { MatDialogRef } from '@angular/material/dialog';
-import { ZXingScannerModule } from '@zxing/ngx-scanner';
-import { BarcodeFormat } from '@zxing/library';
-import { LOAD_WASM, NgxScannerQrcodeComponent } from 'ngx-scanner-qrcode';
-import { AsyncPipe, CommonModule } from '@angular/common';
+import { NgxScannerQrcodeComponent, LOAD_WASM, ScannerQRCodeConfig } from 'ngx-scanner-qrcode';
+import { CommonModule } from '@angular/common';
+import { Subscription } from 'rxjs';
 
 interface LogEntry {
   time: string;
@@ -14,22 +12,57 @@ interface LogEntry {
 
 @Component({
   selector: 'app-qr-scan-dialog',
-  imports: [ZXingScannerModule, NgxScannerQrcodeComponent, AsyncPipe, CommonModule],
+  imports: [NgxScannerQrcodeComponent, CommonModule],
   templateUrl: './qr-scan-dialog.html',
   styleUrl: './qr-scan-dialog.scss',
 })
-export class QrScanDialog implements AfterViewInit {
+export class QrScanDialog implements AfterViewInit, OnDestroy {
   public dialogRef = inject(MatDialogRef<QrScanDialog>);
 
   @ViewChild('scanner', { static: false })
   scanner!: NgxScannerQrcodeComponent;
 
   logs: LogEntry[] = [];
-  scannerData: any = null;
+  scannedData: any = null;
+  errorMessage: string = '';
+  private scannerSubscription?: Subscription;
+
+  // Config สำหรับกล้อง
+  scannerConfig: ScannerQRCodeConfig = {
+    constraints: {
+      video: {
+        facingMode: 'environment', // ใช้กล้องหลัง
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      }
+    },
+    isBeep: true,
+    vibrate: 200,
+  };
 
   ngAfterViewInit() {
-    this.addLog('Component initialized', 'info');
-    this.checkCameraPermission();
+    this.addLog('🔧 Component initialized', 'info');
+    this.initWasm();
+  }
+
+  // โหลด WASM ก่อนใช้งาน
+  initWasm() {
+    this.addLog('⏳ Loading WASM...', 'info');
+    
+    try {
+      // โหลด WASM จาก CDN (หรือ local path)
+      LOAD_WASM().subscribe({
+        next: () => {
+          this.addLog('✅ WASM loaded successfully', 'success');
+        },
+        error: (err) => {
+          this.addLog(`❌ WASM error: ${err}`, 'error');
+          this.errorMessage = 'Failed to load scanner engine';
+        }
+      });
+    } catch (error: any) {
+      this.addLog(`❌ WASM init error: ${error.message}`, 'error');
+    }
   }
 
   addLog(message: string, type: LogEntry['type'] = 'info') {
@@ -38,69 +71,97 @@ export class QrScanDialog implements AfterViewInit {
     console.log(`[${type.toUpperCase()}] ${time}: ${message}`);
   }
 
-  async checkCameraPermission() {
-    try {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        this.addLog('Camera API available', 'info');
-
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        this.addLog('Camera permission granted', 'success');
-
-        // Stop stream after checking
-        stream.getTracks().forEach((track) => track.stop());
-      } else {
-        this.addLog('Camera API not available on this device', 'error');
-      }
-    } catch (error: any) {
-      this.addLog(`Camera permission error: ${error.name} - ${error.message}`, 'error');
+  toggleScanner() {
+    if (this.scanner.isStart) {
+      this.stop();
+    } else {
+      this.start();
     }
   }
 
   start() {
-    this.addLog('Starting scanner...', 'info');
+    this.addLog('🚀 Starting scanner...', 'info');
+    this.errorMessage = '';
 
     if (!this.scanner) {
-      this.addLog('Scanner component not initialized', 'error');
+      this.addLog('❌ Scanner not initialized', 'error');
       return;
     }
 
-    // ต้อง subscribe ถึงจะเริ่มทำงาน
-    const subscription = this.scanner.start().subscribe({
-      next: (result: any) => {
-        this.addLog(`Scanner result: ${JSON.stringify(result)}`, 'success');
-        if (result?.text) {
-          this.scannerData = result;
-          this.addLog(`📦 QR Code: ${result.text}`, 'success');
-        }
-      },
-      error: (error: any) => {
-        this.addLog(`❌ Error: ${error?.message || error}`, 'error');
-      },
-      complete: () => {
-        this.addLog('Scanner completed', 'info');
-      },
-    });
+    // ตรวจสอบ HTTPS
+    if (location.protocol === 'http:' && location.hostname !== 'localhost') {
+      this.addLog('⚠️ WARNING: Must use HTTPS on mobile!', 'warning');
+      this.errorMessage = 'HTTPS required for camera access on mobile';
+    }
 
-    // เก็บ subscription ไว้ unsubscribe ทีหลังถ้าจำเป็น
-    this.addLog('✅ Scanner started', 'success');
-  }
-  stop() {
-    this.addLog('Stopping scanner...', 'info');
+    // ตรวจสอบว่าพร้อมหรือยัง
+    if (!this.scanner.isReady) {
+      this.addLog('⏳ Waiting for scanner to be ready...', 'info');
+    }
 
+    // Stop ก่อนถ้ากำลังทำงาน
+    this.stop();
+
+    // Start และ Subscribe
     try {
-      this.scanner.stop();
-      this.addLog('Scanner stopped', 'info');
+      this.scannerSubscription = this.scanner.start().subscribe({
+        next: (result: any) => {
+          this.addLog(`📱 Scanner active`, 'info');
+          
+          if (result && Array.isArray(result) && result.length > 0) {
+            const qr = result[0];
+            this.scannedData = qr;
+            this.addLog(`✅ ${qr.typeName}: ${qr.value}`, 'success');
+            
+            // Vibrate บนมือถือ
+            if (navigator.vibrate) {
+              navigator.vibrate(200);
+            }
+          }
+        },
+        error: (error: any) => {
+          this.addLog(`❌ Error: ${error?.message || error}`, 'error');
+          this.errorMessage = error?.message || 'Camera access failed';
+          
+          // แก้ไขปัญหาพบบ่อย
+          if (error?.name === 'NotAllowedError') {
+            this.addLog('🚫 Camera permission denied by user', 'error');
+          } else if (error?.name === 'NotFoundError') {
+            this.addLog('📷 No camera found on device', 'error');
+          } else if (error?.name === 'NotReadableError') {
+            this.addLog('🔒 Camera is being used by another app', 'error');
+          } else if (error?.name === 'OverconstrainedError') {
+            this.addLog('⚙️ Camera constraints not supported', 'error');
+          }
+        },
+        complete: () => {
+          this.addLog('⏹️ Scanner completed', 'info');
+        }
+      });
+
+      this.addLog('✅ Scanner started', 'success');
     } catch (error: any) {
-      this.addLog(`Stop error: ${error.message || error}`, 'error');
+      this.addLog(`❌ Exception: ${error.message}`, 'error');
+      this.errorMessage = error.message;
     }
   }
 
-  onScanError(error: any) {
-    this.addLog(`Scan error: ${error?.message || error}`, 'error');
+  stop() {
+    this.addLog('⏹️ Stopping scanner...', 'info');
+
+    if (this.scannerSubscription) {
+      this.scannerSubscription.unsubscribe();
+      this.scannerSubscription = undefined;
+      this.addLog('🔌 Subscription unsubscribed', 'info');
+    }
+
+    if (this.scanner && this.scanner.isStart) {
+      this.scanner.stop();
+      this.addLog('✅ Scanner stopped', 'info');
+    }
   }
 
-  onScanData(data: any) {
-    this.scannerData = data;
-    this.addLog(`Scanned: ${data?.text || JSON.stringify(data)}`, 'success');
+  ngOnDestroy() {
+    this.stop();
   }
 }

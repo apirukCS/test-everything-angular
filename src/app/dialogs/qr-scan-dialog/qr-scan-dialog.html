@@ -1,23 +1,48 @@
 <!-- qr-scan-dialog.html -->
 <div class="scanner-container">
-  <ngx-scanner-qrcode #scanner="scanner" (error)="onScanError($event)" (data)="onScanData($event)">
+  <!-- Scanner Component -->
+  <ngx-scanner-qrcode 
+    #scanner="scanner"
+    [config]="scannerConfig">
   </ngx-scanner-qrcode>
 
-  <button (click)="start()">Start</button>
-  <button (click)="stop()">Stop</button>
+  <!-- Loading State -->
+  <div *ngIf="scanner.isLoading" class="loading">
+    ⏳ Loading camera...
+  </div>
 
-  <!-- Log Section -->
+  <!-- Error State -->
+  <div *ngIf="errorMessage" class="error">
+    ❌ {{ errorMessage }}
+  </div>
+
+  <!-- Controls -->
+  <div class="controls" *ngIf="!scanner.isLoading">
+    <button 
+      (click)="toggleScanner()" 
+      [disabled]="scanner.isLoading">
+      {{ scanner.isStart ? '🛑 Stop' : '📷 Start' }}
+    </button>
+
+    <button 
+      (click)="scanner.torcher()" 
+      *ngIf="scanner.isStart">
+      {{ scanner.isTorch ? '🔦 Flash OFF' : '🔦 Flash ON' }}
+    </button>
+  </div>
+
+  <!-- Log Display -->
   <div class="log-container">
-    <h3>📋 Event Log</h3>
+    <h3>📋 Log ({{ logs.length }})</h3>
     <div *ngFor="let log of logs" class="log-item" [ngClass]="log.type">
       <small>{{ log.time }}</small>
       <p>{{ log.message }}</p>
     </div>
   </div>
 
-  <!-- Data Display -->
-  <div class="data-display">
-    <h3>📦 Scanned Data</h3>
-    <pre>{{ scannerData | json }}</pre>
+  <!-- Scanned Data -->
+  <div *ngIf="scannedData" class="data-display">
+    <h3>📦 Result</h3>
+    <pre>{{ scannedData | json }}</pre>
   </div>
 </div>
