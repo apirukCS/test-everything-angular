@@ -24,7 +24,8 @@ export class QrScanDialog implements AfterViewInit, OnDestroy {
   readonly cameraConfig: ScannerQRCodeConfig = {
     constraints: {
       audio: false,
-      video: true,
+      // Needed by ngx-scanner-qrcode on mobile to start its first stream reliably.
+      video: { facingMode: { ideal: 'environment' } },
     },
   };
 
@@ -105,10 +106,14 @@ export class QrScanDialog implements AfterViewInit, OnDestroy {
 
   private syncSelectedDeviceWithStream(): void {
     const stream = this.scanner.video.nativeElement.srcObject as MediaStream | null;
-    const activeDeviceId = stream?.getVideoTracks()[0]?.getSettings().deviceId;
+    const activeTrack = stream?.getVideoTracks()[0];
+    const activeDeviceId = activeTrack?.getSettings().deviceId;
 
-    if (activeDeviceId && this.devices().some((device) => device.deviceId === activeDeviceId)) {
-      this.selectedDeviceId.set(activeDeviceId);
+    const activeDevice = this.devices().find(
+      (device) => device.deviceId === activeDeviceId || device.label === activeTrack?.label,
+    );
+    if (activeDevice) {
+      this.selectedDeviceId.set(activeDevice.deviceId);
     }
   }
 
